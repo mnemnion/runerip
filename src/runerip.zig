@@ -1,4 +1,34 @@
-// Zig source file for runerip
+//! Runerip: Fast Scalar Value Decoder
+//!
+//! The `runerip` library provides a decoder for UTF-8, translating a
+//! stream of bytes into runes.
+//!
+//! Historical note: while the term 'rune' in modern parlance is a bit
+//! peculiar to Go, it was originally peculiar to Plan 9, an innovative
+//! research OS planned as a successor to Unix.  Plan 9 is also where
+//! UTF-8 itself was designed, and first implemented.  For that reason,
+//! I consider the term the canonical choice for decoded Unicode scalar
+//! values.  They are too important to be burdened with an awkward noun
+//! phrase of 12 letters.  Four will do.
+//!
+//! The algorithm used aims to be optimal, without involving SIMD, this
+//! strikes a balance between portability and efficiency.  That is done
+//! by using a DFA, represented as a few lookup tables, to track state,
+//! encoding valid transitions between bytes, arriving at 0 each time a
+//! codepoint is decoded.  In the process it builds up the value of the
+//! codepoint in question.
+//!
+//! The virtue of such an approach is low branching factor, achieved at
+//! a modest cost of storing the tables.  An embedded system might want
+//! to use a more familiar decision graph based on switches, but modern
+//! hosted environments can well afford the space, and may appreciate a
+//! speed increase in exchange.
+//!
+//! Credit for the algorithm goes to Björn Höhrmann, who wrote it up at
+//! https://bjoern.hoehrmann.de/utf-8/decoder/dfa/ .  The original
+//! license may be found in the ./credits folder.
+//!
+
 const std = @import("std");
 
 // zig fmt: off
@@ -14,11 +44,6 @@ const u8dfa: [256]u8 = .{
 8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // c0..df
 0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
 0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
-0x0,0x1,0x2,0x3,0x5,0x8,0x7,0x1,0x1,0x1,0x4,0x6,0x1,0x1,0x1,0x1, // s0..s0
-1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1, // s1..s2
-1,2,1,1,1,1,1,2,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1, // s3..s4
-1,2,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,3,1,1,1,1,1,1, // s5..s6
-1,3,1,1,1,1,1,3,1,3,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // s7..s8
 };
 
 /// State transition: state + class = new state
@@ -40,7 +65,7 @@ const st_dfa: [108]u8 = .{
 
 /// State masks (experiment, shifts may be faster)
 const c_mask: [12]u8 = .{
-    0,
+    0xff,
     0,
     0b0011_1111,
     0b0001_1111,
@@ -81,4 +106,21 @@ pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
         return error.InvalidUnicode
     else
         return false;
+}
+
+//| TESTS
+const testing = std.testing;
+const expect = testing.expect;
+const expectEqual = testing.expectEqual;
+
+test decodeNext {
+    const abcde = "abcde";
+    var st: u32 = 0;
+    var rune: u32 = 0;
+    for (abcde) |b| {
+        const ret = decodeNext(&st, &rune, b);
+        try expectEqual(ret, 0);
+        try expectEqual(ret, st);
+        try expectEqual(b, rune);
+    }
 }
