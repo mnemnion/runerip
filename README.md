@@ -12,7 +12,7 @@ The first tests counts codepoints.  On this test, `runerip` is comfortably faste
 
 The second test decodes codepoints, summing them together to convince the optimizer to include the decoding.  Here `runerip` also does well, on the order of 2x faster than standard.
 
-The third test simply validates that the string is UTF-8, and here, the standard library ekes out a victory, with `runerip` about 0.9x as fast.  Zig std uses a[highly tuned implementation](https://ziglang.org/documentation/master/std/#std.unicode.utf8ValidateSliceImpl) for this task, including its own lookup DFA.  The `runerip` algorithm is exceedingly simple in comparison, but not in any useful or advantageous way.
+The third test simply validates that the string is UTF-8, and here, the standard library ekes out a victory, with `runerip` about 0.9x as fast.  Zig std uses a [highly tuned implementation](https://ziglang.org/documentation/master/std/#std.unicode.utf8ValidateSliceImpl) for this task, including its own lookup DFA.  The `runerip` algorithm is exceedingly simple in comparison, but not in any useful or advantageous way.
 
 ## Considerations
 
