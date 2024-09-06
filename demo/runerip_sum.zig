@@ -14,7 +14,7 @@ pub export fn main() void {
     for (0..10000) |_| {
         var r_iter = r_view.iterator();
         while (r_iter.nextRune()) |rune| {
-            swizzler +%= rune;
+            swizzler += rune;
         }
     }
     std.debug.print("final swizzle: {d}\n", .{swizzler});

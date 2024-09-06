@@ -71,6 +71,26 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(standard_sum_exe);
 
+    const runerip_validate_exe = b.addExecutable(.{
+        .name = "runerip_validate",
+        .root_source_file = b.path("demo/runerip_validate.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    runerip_validate_exe.root_module.addImport("runerip", runerip_module);
+
+    b.installArtifact(runerip_validate_exe);
+
+    const standard_validate_exe = b.addExecutable(.{
+        .name = "standard_validate",
+        .root_source_file = b.path("demo/standard_validate.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(standard_validate_exe);
+
     const addOutputDirectoryArg = comptime if (@import("builtin").zig_version.order(.{ .major = 0, .minor = 13, .patch = 0 }) == .lt)
         std.Build.Step.Run.addOutputFileArg
     else

@@ -8,7 +8,7 @@ pub export fn main() void {
     for (0..10000) |_| {
         var utf8_iter = utf8_view.iterator();
         while (utf8_iter.nextCodepoint()) |cp| {
-            swizzle +%= cp;
+            swizzle += cp;
         }
     }
     std.debug.print("final swizzle: {d}\n", .{swizzle});
