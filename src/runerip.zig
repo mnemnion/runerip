@@ -109,13 +109,16 @@ pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
         return false;
 }
 
+/// Decode one Rune.  If valid, the Rune is returned,
+/// otherwise `error.InvalidUnicode` is thrown.  After
+/// a decode, `i` will point to the next rune, if any,
+/// or when an error is thrown, the invalid byte.
 pub inline fn decodeRune(
     state: *u32,
     rune: *u32,
     slice: []const u8,
     i: *usize,
-) !u32 {
-    std.debug.assert(state.* == RUNE_ACCEPT);
+) !u21 {
     while (true) {
         const byte = slice[i.*];
         const class: u4 = @intCast(u8dfa[byte]);
@@ -128,7 +131,8 @@ pub inline fn decodeRune(
         if (state.* == RUNE_REJECT) return error.InvalidUnicode;
         i.* += 1;
     }
-    return rune.*;
+    i.* += 1;
+    return @intCast(rune.*);
 }
 
 pub fn countRunes(slice: []const u8) !usize {
@@ -136,27 +140,94 @@ pub fn countRunes(slice: []const u8) !usize {
     var st: u32 = 0;
     var rune: u32 = 0;
 
-    const N = @sizeOf(usize);
-    const MASK = 0x80 * (std.math.maxInt(usize) / 0xff);
+    // I'll leave the code in for further tests/comparisons, but I'm
+    // not seeing a meaningful speed improvement for the fast path in
+    // the current demo.  Probably helps texts which are mostly ASCII
+    // though.
+
+    // const N = @sizeOf(usize);
+    // const MASK = 0x80 * (std.math.maxInt(usize) / 0xff);
     var i: usize = 0;
 
-    while (i < slice.len) : (i += 1) {
+    while (i < slice.len) {
         // Fast path for ASCII sequences
-        if (slice[i] < 0x7f) while (i + N <= slice.len) : (i += N) {
-            const v = std.mem.readInt(usize, slice[i..][0..N], native_endian);
-            if (v & MASK != 0) break;
-            count += N;
-        };
+        // if (slice[i] < 0x7f) while (i + N <= slice.len) : (i += N) {
+        //     const v = std.mem.readInt(usize, slice[i..][0..N], native_endian);
+        //     if (v & MASK != 0) break;
+        //     count += N;
+        // };
         _ = try decodeRune(&st, &rune, slice, &i);
         count += 1;
     }
     return count;
 }
 
+pub fn validateRuneSlice(slice: []const u8) bool {
+    var st: u32 = 0;
+    for (slice) |b| {
+        const class = u8dfa[b];
+        st = st_dfa[st + class];
+        if (st == RUNE_REJECT) return false;
+    }
+    return true;
+}
+
+pub const RuneView = struct {
+    bytes: []const u8,
+
+    pub fn init(slice: []const u8) !RuneView {
+        if (!validateRuneSlice(slice))
+            return error.InvalidUtf8;
+        return RuneView{ .bytes = slice };
+    }
+
+    pub fn initComptime(slice: []const u8) RuneView {
+        return comptime if (init(slice)) |r| r else |err| switch (err) {
+            error.InvalidUtf8 => {
+                @compileError("invalid utf8");
+            },
+        };
+    }
+
+    pub fn initUnchecked(slice: []const u8) RuneView {
+        return RuneView{ .bytes = slice };
+    }
+
+    pub fn iterator(rv: RuneView) RuneIterator {
+        return RuneIterator{ .bytes = rv.bytes };
+    }
+};
+
+pub const RuneIterator = struct {
+    bytes: []const u8,
+    st: u32 = 0,
+    i: usize = 0,
+
+    pub fn nextRune(r: *RuneIterator) ?u21 {
+        if (r.i >= r.bytes.len) return null;
+        var rune: u32 = 0;
+        return decodeRune(&r.st, &rune, r.bytes, &r.i) catch unreachable;
+    }
+
+    pub fn nextRuneSlice(r: *RuneIterator) ?[]const u8 {
+        if (r.i >= r.bytes.len) return null;
+        const start = r.i;
+        r.i = switch (r.bytes[r.i]) {
+            0...0x7f => r.i + 1,
+            0xc2...0xdf => r.i + 2,
+            0xe0...0xef => r.i + 3,
+            0xf0...0xf4 => r.i + 4,
+            else => unreachable,
+        };
+        return r.bytes[start..r.i];
+    }
+};
+
 //| TESTS
 const testing = std.testing;
 const expect = testing.expect;
 const expectEqual = testing.expectEqual;
+const expectEqualStrings = testing.expectEqualStrings;
 
 const abcde = "abcde";
 const greek = "αβγδε";
@@ -191,4 +262,28 @@ test countRunes {
         const count = try countRunes(emotes);
         try expectEqual(5, count);
     }
+}
+
+fn testIterators(slice: []const u8) !void {
+    const r_view = try RuneView.init(slice);
+    var std_view = try std.unicode.Utf8View.init(slice);
+    var r_iter = r_view.iterator();
+    var std_iter = std_view.iterator();
+    while (r_iter.nextRune()) |rune| {
+        const std_rune = std_iter.nextCodepoint().?;
+        try expectEqual(std_rune, rune);
+    }
+    r_iter = r_view.iterator();
+    std_iter = std_view.iterator();
+    while (r_iter.nextRuneSlice()) |rs| {
+        const std_slice = std_iter.nextCodepointSlice().?;
+        try expectEqualStrings(std_slice, rs);
+    }
+}
+
+test RuneView {
+    try testIterators(abcde);
+    try testIterators(greek);
+    try testIterators(maths);
+    try testIterators(emotes);
 }
