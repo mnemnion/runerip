@@ -113,7 +113,7 @@ pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
 /// otherwise `error.InvalidUnicode` is thrown.  After
 /// a decode, `i` will point to the next rune, if any,
 /// or when an error is thrown, the invalid byte.
-pub inline fn decodeRune(
+inline fn decodeRune(
     state: *u32,
     rune: *u32,
     slice: []const u8,
@@ -162,9 +162,14 @@ pub fn countRunes(slice: []const u8) !usize {
     return count;
 }
 
-pub fn validateRuneSlice(slice: []const u8) bool {
+/// Validate that a slice is composed only of valid runes in the
+/// utf-8 encoding.
+pub inline fn validateRuneSlice(slice: []const u8) bool {
     var st: u32 = 0;
-    for (slice) |b| {
+    var i: usize = 0;
+    while (i < slice.len) : (i += 1) {
+        const b = slice[i];
+        if (st == RUNE_ACCEPT and b < 0x80) continue;
         st = st_dfa[st + u8dfa[b]];
         if (st == RUNE_REJECT) return false;
     }
@@ -210,7 +215,7 @@ pub const RuneIterator = struct {
         // Multibyte
         var class: u4 = @intCast(u8dfa[byte]);
         var st: u32 = st_dfa[class];
-        var rune: u32 = byte & (@as(u16, 0xff) >> class);
+        var rune: u32 = byte & c_mask[class];
         // Byte 2
         byte = r.bytes[r.i];
         class = @intCast(u8dfa[byte]);
