@@ -97,20 +97,20 @@ pub inline fn decodeNext(state: *u32, rune: *u32, byte: u16) u32 {
 }
 
 /// Decode one byte.  Returns `true` if a full rune is decoded, `false`
-/// if not, and throws error{InvalidUnicode} if an invalid  state is
+/// if not, and throws error{InvalidUtf8} if an invalid  state is
 /// reached.
 pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
     const accept = decodeNext(state, rune, byte);
     if (accept == RUNE_ACCEPT)
         return true
     else if (accept == RUNE_REJECT)
-        return error.InvalidUnicode
+        return error.InvalidUtf8
     else
         return false;
 }
 
 /// Decode one Rune.  If valid, the Rune is returned,
-/// otherwise `error.InvalidUnicode` is thrown.  After
+/// otherwise `error.InvalidUtf8` is thrown.  After
 /// a decode, `i` will point to the next rune, if any,
 /// or when an error is thrown, the invalid byte.
 inline fn decodeRune(
@@ -128,7 +128,7 @@ inline fn decodeRune(
             byte & (@as(u16, 0xff) >> class);
         state.* = st_dfa[state.* + class];
         if (state.* == RUNE_ACCEPT) break;
-        if (state.* == RUNE_REJECT) return error.InvalidUnicode;
+        if (state.* == RUNE_REJECT) return error.InvalidUtf8;
         i.* += 1;
     }
     i.* += 1;
