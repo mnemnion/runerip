@@ -6,22 +6,18 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    
     const runerip_module = b.addModule("runerip", .{
         .root_source_file = b.path("src/runerip.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    _ = runerip_module; // autofix
-          
     const test_filters = b.option(
         []const []const u8,
         "test-filter",
         "Skip tests that do not match any filter",
     ) orelse &[0][]const u8{};
 
-    
     const module_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/runerip.zig"),
         .target = target,
@@ -30,11 +26,30 @@ pub fn build(b: *std.Build) void {
     });
 
     const run_module_unit_tests = b.addRunArtifact(module_unit_tests);
-          
+
     const test_step = b.step("test", "Run unit tests");
-    
+
     test_step.dependOn(&run_module_unit_tests.step);
-        
+
+    const runerip_demo_exe = b.addExecutable(.{
+        .name = "runerip_demo",
+        .root_source_file = b.path("demo/runerip.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    runerip_demo_exe.root_module.addImport("runerip", runerip_module);
+
+    b.installArtifact(runerip_demo_exe);
+
+    const standard_demo_exe = b.addExecutable(.{
+        .name = "standard_demo",
+        .root_source_file = b.path("demo/standard.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(standard_demo_exe);
 
     const addOutputDirectoryArg = comptime if (@import("builtin").zig_version.order(.{ .major = 0, .minor = 13, .patch = 0 }) == .lt)
         std.Build.Step.Run.addOutputFileArg
@@ -59,5 +74,5 @@ pub fn build(b: *std.Build) void {
     });
 
     const coverage_step = b.step("coverage", "Generate coverage (kcov must be installed)");
-    coverage_step.dependOn(&install_coverage.step); 
+    coverage_step.dependOn(&install_coverage.step);
 }
