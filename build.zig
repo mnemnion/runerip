@@ -32,8 +32,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_module_unit_tests.step);
 
     const runerip_demo_exe = b.addExecutable(.{
-        .name = "runerip_demo",
-        .root_source_file = b.path("demo/runerip.zig"),
+        .name = "runerip_count",
+        .root_source_file = b.path("demo/runerip_count.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -43,8 +43,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(runerip_demo_exe);
 
     const standard_demo_exe = b.addExecutable(.{
-        .name = "standard_demo",
-        .root_source_file = b.path("demo/standard.zig"),
+        .name = "standard_count",
+        .root_source_file = b.path("demo/standard_count.zig"),
         .target = target,
         .optimize = optimize,
     });
