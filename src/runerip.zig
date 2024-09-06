@@ -171,6 +171,7 @@ pub fn validateRuneSlice(slice: []const u8) bool {
     return true;
 }
 
+/// RuneView iterates the runes of a UTF-8 encoded string.
 pub const RuneView = struct {
     bytes: []const u8,
 
@@ -254,6 +255,24 @@ pub const RuneIterator = struct {
         };
         return r.bytes[start..r.i];
     }
+
+    ///  Look ahead at the next n runes without advancing the iterator.
+    ///  If fewer than n runes are available, then return the remainder
+    ///  of the string.
+    pub fn peek(r: *RuneIterator, n: usize) []const u8 {
+        var _n = n;
+        var i = r.i;
+        while (_n > 0 and i < r.bytes.len) : (_n -= 1) {
+            i += switch (r.bytes[i]) {
+                0...0x7f => 1,
+                0xc2...0xdf => 2,
+                0xe0...0xef => 3,
+                0xf0...0xf4 => 4,
+                else => unreachable,
+            };
+        }
+        return r.bytes[r.i..i];
+    }
 };
 
 //| TESTS
@@ -308,6 +327,7 @@ fn testIterators(slice: []const u8) !void {
     }
     r_iter = r_view.iterator();
     std_iter = std_view.iterator();
+    try expectEqualStrings(std_iter.peek(3), r_iter.peek(3));
     while (r_iter.nextRuneSlice()) |rs| {
         const std_slice = std_iter.nextCodepointSlice().?;
         try expectEqualStrings(std_slice, rs);
