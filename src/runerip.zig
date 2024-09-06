@@ -165,8 +165,7 @@ pub fn countRunes(slice: []const u8) !usize {
 pub fn validateRuneSlice(slice: []const u8) bool {
     var st: u32 = 0;
     for (slice) |b| {
-        const class = u8dfa[b];
-        st = st_dfa[st + class];
+        st = st_dfa[st + u8dfa[b]];
         if (st == RUNE_REJECT) return false;
     }
     return true;
@@ -246,11 +245,11 @@ pub const RuneIterator = struct {
     pub fn nextRuneSlice(r: *RuneIterator) ?[]const u8 {
         if (r.i >= r.bytes.len) return null;
         const start = r.i;
-        r.i = switch (r.bytes[r.i]) {
-            0...0x7f => r.i + 1,
-            0xc2...0xdf => r.i + 2,
-            0xe0...0xef => r.i + 3,
-            0xf0...0xf4 => r.i + 4,
+        r.i += switch (r.bytes[r.i]) {
+            0...0x7f => 1,
+            0xc2...0xdf => 2,
+            0xe0...0xef => 3,
+            0xf0...0xf4 => 4,
             else => unreachable,
         };
         return r.bytes[start..r.i];
