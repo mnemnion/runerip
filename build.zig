@@ -31,25 +31,45 @@ pub fn build(b: *std.Build) void {
 
     test_step.dependOn(&run_module_unit_tests.step);
 
-    const runerip_demo_exe = b.addExecutable(.{
+    const runerip_count_exe = b.addExecutable(.{
         .name = "runerip_count",
         .root_source_file = b.path("demo/runerip_count.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    runerip_demo_exe.root_module.addImport("runerip", runerip_module);
+    runerip_count_exe.root_module.addImport("runerip", runerip_module);
 
-    b.installArtifact(runerip_demo_exe);
+    b.installArtifact(runerip_count_exe);
 
-    const standard_demo_exe = b.addExecutable(.{
+    const standard_count_exe = b.addExecutable(.{
         .name = "standard_count",
         .root_source_file = b.path("demo/standard_count.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    b.installArtifact(standard_demo_exe);
+    b.installArtifact(standard_count_exe);
+
+    const runerip_xor_exe = b.addExecutable(.{
+        .name = "runerip_xor",
+        .root_source_file = b.path("demo/runerip_xor.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    runerip_xor_exe.root_module.addImport("runerip", runerip_module);
+
+    b.installArtifact(runerip_xor_exe);
+
+    const standard_xor_exe = b.addExecutable(.{
+        .name = "standard_xor",
+        .root_source_file = b.path("demo/standard_xor.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(standard_xor_exe);
 
     const addOutputDirectoryArg = comptime if (@import("builtin").zig_version.order(.{ .major = 0, .minor = 13, .patch = 0 }) == .lt)
         std.Build.Step.Run.addOutputFileArg
