@@ -29,3 +29,11 @@ Basically, there are many approaches to coping with invalid sequences, and it al
 An additional strength of the `runerip` approach (which is, to be clear, the Björn Hörhmann approach) is that it generalizes well.  Creating additional DFA tables to match e.g. WTF-8 instead of UTF-8 is a simple matter.  Zig source code is a subset of UTF-8 which disallows most C0 control bytes, and _should_, but at the moment does not, disallow C1 sequences as well.  This too is a simple matter of adjusting the DFAs involved to reject those when encountered.
 
 As it stands, `runerip` is an experiment, a proof of concept.  If anyone should care to run the demos, and report back if timings are materially different on other architectures and systems, I would be delighted to hear about it.  As I find time, I expect I'll polish the rough edges, and add a few more functions to the collection.
+
+### Runes
+
+Some might have noticed my habit of referring to what the Unicode consortium calls a 'scalar value' as runes.  This is habitual, and canonical, in Go language circles, but scarce elsewhere (Odin also does so).  What's up with that?
+
+Consider the alternatives!  Scalar value, while official, also smells like it.  Originally Unicode used "character", but that is unsuitable several times over: some runes are not characters in any reasonable sense, while many perceived characters are comprised of several runes.  `wchar` carries considerable baggage, usually signalling that the broken UCS-2 encoding is assumed by such a program.  Even something like 'glyph' doesn't fit the bill, having an established meaning in text rendering which is sure to collide with using it for the atomic unit of text itself.
+
+`rune` then, while a bit whimsical, is a clear and _short_ (especially, short) term for a scalar value.  Although Go is the only large community of practice to use it at present, it is one of the first terms ever used for what it is.  The coinage is from Plan 9, where UTF-8 was designed and first implemented, and it is mainly as an homage to that invention that I use the word.  Generally inventing something comes with the privilege of naming it, at least, until Microsoft gets involved.
