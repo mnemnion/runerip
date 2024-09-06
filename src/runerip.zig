@@ -200,13 +200,47 @@ pub const RuneView = struct {
 
 pub const RuneIterator = struct {
     bytes: []const u8,
-    st: u32 = 0,
     i: usize = 0,
 
-    pub fn nextRune(r: *RuneIterator) ?u21 {
+    pub inline fn nextRune(r: *RuneIterator) ?u21 {
         if (r.i >= r.bytes.len) return null;
-        var rune: u32 = 0;
-        return decodeRune(&r.st, &rune, r.bytes, &r.i) catch unreachable;
+        var byte: u16 = r.bytes[r.i];
+        r.i += 1;
+        if (byte < 0x80) return byte;
+        // Multibyte
+        var class: u4 = @intCast(u8dfa[byte]);
+        var st: u32 = st_dfa[class];
+        var rune: u32 = byte & (@as(u16, 0xff) >> class);
+        // Byte 2
+        byte = r.bytes[r.i];
+        class = @intCast(u8dfa[byte]);
+        st = st_dfa[st + class];
+        rune = (byte & 0x3f) | (rune << 6);
+        r.i += 1;
+        if (st == RUNE_ACCEPT) {
+            return @intCast(rune);
+        }
+        // Byte 3
+        byte = r.bytes[r.i];
+        class = @intCast(u8dfa[byte]);
+        st = st_dfa[st + class];
+        rune = (byte & 0x3f) | (rune << 6);
+        r.i += 1;
+        if (st == RUNE_ACCEPT) {
+            return @intCast(rune);
+        }
+        // Byte 4
+        byte = r.bytes[r.i];
+        if (builtin.mode == .Debug) {
+            class = @intCast(u8dfa[byte]);
+            st = st_dfa[st + class];
+            std.debug.assert(st == RUNE_ACCEPT);
+        }
+        rune = (byte & 0x3f) | (rune << 6);
+        r.i += 1;
+        // Equivalent of a catch unreachable
+        std.debug.assert(st != RUNE_REJECT);
+        return @intCast(rune);
     }
 
     pub fn nextRuneSlice(r: *RuneIterator) ?[]const u8 {
