@@ -30,7 +30,8 @@
 //!
 
 const std = @import("std");
-
+const builtin = @import("builtin");
+const native_endian = builtin.cpu.arch.endian();
 // zig fmt: off
 
 /// Byte transitions: value to class
@@ -85,12 +86,12 @@ pub const RUNE_ACCEPT = 0;
 /// Error state
 pub const RUNE_REJECT = 12;
 
-pub inline fn decodeNext(state: *u32, rune: *u32, byte: u8) u32 {
-    const class: u32 = u8dfa[byte];
+pub inline fn decodeNext(state: *u32, rune: *u32, byte: u16) u32 {
+    const class: u4 = @intCast(u8dfa[byte]);
     rune.* = if (state.* != RUNE_ACCEPT)
         (byte & 0x3f) | (rune.* << 6)
     else
-        (byte & c_mask[class]);
+        byte & (@as(u16, 0xff) >> class);
     state.* = st_dfa[state.* + class];
     return state.*;
 }
@@ -108,13 +109,61 @@ pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
         return false;
 }
 
+pub inline fn decodeRune(
+    state: *u32,
+    rune: *u32,
+    slice: []const u8,
+    i: *usize,
+) !u32 {
+    std.debug.assert(state.* == RUNE_ACCEPT);
+    while (true) {
+        const byte = slice[i.*];
+        const class: u4 = @intCast(u8dfa[byte]);
+        rune.* = if (state.* != RUNE_ACCEPT)
+            (byte & 0x3f) | (rune.* << 6)
+        else
+            byte & (@as(u16, 0xff) >> class);
+        state.* = st_dfa[state.* + class];
+        if (state.* == RUNE_ACCEPT) break;
+        if (state.* == RUNE_REJECT) return error.InvalidUnicode;
+        i.* += 1;
+    }
+    return rune.*;
+}
+
+pub fn countRunes(slice: []const u8) !usize {
+    var count: usize = 0;
+    var st: u32 = 0;
+    var rune: u32 = 0;
+
+    const N = @sizeOf(usize);
+    const MASK = 0x80 * (std.math.maxInt(usize) / 0xff);
+    var i: usize = 0;
+
+    while (i < slice.len) : (i += 1) {
+        // Fast path for ASCII sequences
+        if (slice[i] < 0x7f) while (i + N <= slice.len) : (i += N) {
+            const v = std.mem.readInt(usize, slice[i..][0..N], native_endian);
+            if (v & MASK != 0) break;
+            count += N;
+        };
+        _ = try decodeRune(&st, &rune, slice, &i);
+        count += 1;
+    }
+    return count;
+}
+
 //| TESTS
 const testing = std.testing;
 const expect = testing.expect;
 const expectEqual = testing.expectEqual;
 
+const abcde = "abcde";
+const greek = "αβγδε";
+const maths = "∅⊄⊅⊆⊇";
+const emotes = "🤓😎🥸🤩🤯";
+
 test decodeNext {
-    const abcde = "abcde";
     var st: u32 = 0;
     var rune: u32 = 0;
     for (abcde) |b| {
@@ -122,5 +171,24 @@ test decodeNext {
         try expectEqual(ret, 0);
         try expectEqual(ret, st);
         try expectEqual(b, rune);
+    }
+}
+
+test countRunes {
+    {
+        const count = try countRunes(abcde);
+        try expectEqual(5, count);
+    }
+    {
+        const count = try countRunes(greek);
+        try expectEqual(5, count);
+    }
+    {
+        const count = try countRunes(maths);
+        try expectEqual(5, count);
+    }
+    {
+        const count = try countRunes(emotes);
+        try expectEqual(5, count);
     }
 }
