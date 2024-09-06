@@ -51,25 +51,25 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(standard_count_exe);
 
-    const runerip_xor_exe = b.addExecutable(.{
-        .name = "runerip_xor",
-        .root_source_file = b.path("demo/runerip_xor.zig"),
+    const runerip_sum_exe = b.addExecutable(.{
+        .name = "runerip_sum",
+        .root_source_file = b.path("demo/runerip_sum.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    runerip_xor_exe.root_module.addImport("runerip", runerip_module);
+    runerip_sum_exe.root_module.addImport("runerip", runerip_module);
 
-    b.installArtifact(runerip_xor_exe);
+    b.installArtifact(runerip_sum_exe);
 
-    const standard_xor_exe = b.addExecutable(.{
-        .name = "standard_xor",
-        .root_source_file = b.path("demo/standard_xor.zig"),
+    const standard_sum_exe = b.addExecutable(.{
+        .name = "standard_sum",
+        .root_source_file = b.path("demo/standard_sum.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    b.installArtifact(standard_xor_exe);
+    b.installArtifact(standard_sum_exe);
 
     const addOutputDirectoryArg = comptime if (@import("builtin").zig_version.order(.{ .major = 0, .minor = 13, .patch = 0 }) == .lt)
         std.Build.Step.Run.addOutputFileArg
