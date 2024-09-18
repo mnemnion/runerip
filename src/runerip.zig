@@ -31,6 +31,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const assert = std.debug.assert;
 const native_endian = builtin.cpu.arch.endian();
 // zig fmt: off
 
@@ -96,24 +97,11 @@ pub inline fn decodeNext(state: *u32, rune: *u32, byte: u16) u32 {
     return state.*;
 }
 
-/// Decode one byte.  Returns `true` if a full rune is decoded, `false`
-/// if not, and throws error{InvalidUtf8} if an invalid  state is
-/// reached.
-pub inline fn decoded(state: *u32, rune: *u32, byte: u8) !bool {
-    const accept = decodeNext(state, rune, byte);
-    if (accept == RUNE_ACCEPT)
-        return true
-    else if (accept == RUNE_REJECT)
-        return error.InvalidUtf8
-    else
-        return false;
-}
-
 /// Decode one Rune.  If valid, the Rune is returned,
 /// otherwise `error.InvalidUtf8` is thrown.  After
 /// a decode, `i` will point to the next rune, if any,
 /// or when an error is thrown, the invalid byte.
-inline fn decodeRune(
+inline fn decodeOne(
     state: *u32,
     rune: *u32,
     slice: []const u8,
@@ -133,6 +121,45 @@ inline fn decodeRune(
     }
     i.* += 1;
     return @intCast(rune.*);
+}
+
+/// Decode the rune at [0].  This is only efficient if you need
+/// one rune: use RuneView to iterate the runes of a string.
+/// Assumes that the slice is valid UTF-8, and not truncated.
+pub fn decodeRuneAssumeValid(slice: []const u8) u21 {
+    var byte: u16 = slice[0];
+    if (byte < 0x80) return byte;
+    // Multibyte
+    var class: u4 = @intCast(u8dfa[byte]);
+    var st: u32 = st_dfa[class];
+    var rune: u32 = byte & c_mask[class];
+    // Byte 2
+    byte = slice[1];
+    class = @intCast(u8dfa[byte]);
+    st = st_dfa[st + class];
+    rune = (byte & 0x3f) | (rune << 6);
+    if (st == RUNE_ACCEPT) {
+        return @intCast(rune);
+    }
+    // Byte 3
+    byte = slice[2];
+    class = @intCast(u8dfa[byte]);
+    st = st_dfa[st + class];
+    rune = (byte & 0x3f) | (rune << 6);
+    if (st == RUNE_ACCEPT) {
+        return @intCast(rune);
+    }
+    // Byte 4
+    byte = slice[3];
+    if (builtin.mode == .Debug) {
+        class = @intCast(u8dfa[byte]);
+        st = st_dfa[st + class];
+        std.debug.assert(st == RUNE_ACCEPT);
+    }
+    rune = (byte & 0x3f) | (rune << 6);
+    // Equivalent of a catch unreachable
+    assert(st != RUNE_REJECT);
+    return @intCast(rune);
 }
 
 pub fn countRunes(slice: []const u8) !usize {
@@ -156,14 +183,14 @@ pub fn countRunes(slice: []const u8) !usize {
         //     if (v & MASK != 0) break;
         //     count += N;
         // };
-        _ = try decodeRune(&st, &rune, slice, &i);
+        _ = try decodeOne(&st, &rune, slice, &i);
         count += 1;
     }
     return count;
 }
 
 /// Validate that a slice is composed only of valid runes in the
-/// utf-8 encoding.
+/// UTF-8 encoding.
 pub inline fn validateRuneSlice(slice: []const u8) bool {
     var st: u32 = 0;
     var i: usize = 0;
@@ -174,6 +201,64 @@ pub inline fn validateRuneSlice(slice: []const u8) bool {
         if (st == RUNE_REJECT) return false;
     }
     return true;
+}
+
+/// Validate that a slice is composed only of valid runes in the
+/// UTF-8 encoding.  Must be passed a cursor, by pointer: this
+/// will point to slice.len when the return value is `true`, and
+/// to the first rejected byte when `false`.
+pub fn validateUtf8WithCursor(slice: []const u8, i: *usize) bool {
+    var st: u32 = 0;
+    while (i.* < slice.len) : (i.* += 1) {
+        const b = slice[i.*];
+        if (st == RUNE_ACCEPT and b < 0x80) continue;
+        st = st_dfa[st + u8dfa[b]];
+        if (st == RUNE_REJECT) return false;
+    }
+    return true;
+}
+
+//| Transcoding to UTF-16
+
+/// Transcode utf_8 source into utf_16 destination, returning the
+/// length of a slice of utf_16 containing the transcoded points.
+/// Assumes that the destination has sufficient room for the transcoding.
+pub fn utf8ToUtf16Le(utf_16: []u16, utf_8: []const u8) !usize {
+    var i_8: usize = 0;
+    var i_16: usize = 0;
+    var st: u32 = 0;
+    var rune: u32 = 0;
+    while (i_8 < utf_8.len) : (i_8 += 1) {
+        const b = utf_8[i_8];
+        if (st == RUNE_ACCEPT) {
+            if (b < 0x80) {
+                utf_16[i_16] = std.mem.nativeToLittle(u16, @intCast(rune));
+                i_16 += 1;
+            } else {
+                const class = u8dfa[b];
+                st = st_dfa[class];
+                rune = b & c_mask[class];
+            }
+            continue;
+        }
+        st = st_dfa[st + u8dfa[b]];
+        rune = (b & 0x3f) | (rune << 6);
+        if (st == RUNE_REJECT) {
+            @branchHint(.cold);
+            return error.InvalidUtf8;
+        } else if (st == RUNE_ACCEPT) {
+            if (rune < 0x10000) {
+                utf_16[i_16] = std.mem.nativeToLittle(u16, @intCast(rune));
+                i_16 += 1;
+            } else {
+                const high = @as(u16, @intCast((rune - 0x10000) >> 10)) + 0xD800;
+                const low = @as(u16, @intCast(rune & 0x3FF)) + 0xDC00;
+                utf_16[i_16..][0..2].* = .{ std.mem.nativeToLittle(u16, high), std.mem.nativeToLittle(u16, low) };
+                i_16 += 2;
+            }
+        }
+    }
+    return i_16;
 }
 
 /// RuneView iterates the runes of a UTF-8 encoded string.
@@ -285,6 +370,7 @@ const testing = std.testing;
 const expect = testing.expect;
 const expectEqual = testing.expectEqual;
 const expectEqualStrings = testing.expectEqualStrings;
+const expectEqualSlices = testing.expectEqualSlices;
 
 const abcde = "abcde";
 const greek = "αβγδε";
@@ -318,6 +404,23 @@ test countRunes {
     {
         const count = try countRunes(emotes);
         try expectEqual(5, count);
+    }
+}
+
+test utf8ToUtf16Le {
+    var out_std: [5]u16 = undefined;
+    var out_rune: [5]u16 = undefined;
+    {
+        _ = try std.unicode.utf8ToUtf16Le(&out_std, greek);
+        const count = try utf8ToUtf16Le(&out_rune, greek);
+        try expectEqual(5, count);
+        try expectEqualSlices(u16, &out_std, &out_rune);
+    }
+    {
+        _ = try std.unicode.utf8ToUtf16Le(&out_std, maths);
+        const count = try utf8ToUtf16Le(&out_rune, maths);
+        try expectEqual(5, count);
+        try expectEqualSlices(u16, &out_std, &out_rune);
     }
 }
 
