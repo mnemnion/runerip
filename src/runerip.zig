@@ -167,22 +167,9 @@ pub fn countRunes(slice: []const u8) !usize {
     var st: u32 = 0;
     var rune: u32 = 0;
 
-    // I'll leave the code in for further tests/comparisons, but I'm
-    // not seeing a meaningful speed improvement for the fast path in
-    // the current demo.  Probably helps texts which are mostly ASCII
-    // though.
-
-    // const N = @sizeOf(usize);
-    // const MASK = 0x80 * (std.math.maxInt(usize) / 0xff);
     var i: usize = 0;
 
     while (i < slice.len) {
-        // Fast path for ASCII sequences
-        // if (slice[i] < 0x7f) while (i + N <= slice.len) : (i += N) {
-        //     const v = std.mem.readInt(usize, slice[i..][0..N], native_endian);
-        //     if (v & MASK != 0) break;
-        //     count += N;
-        // };
         _ = try decodeOne(&st, &rune, slice, &i);
         count += 1;
     }
@@ -191,13 +178,50 @@ pub fn countRunes(slice: []const u8) !usize {
 
 /// Validate that a slice is composed only of valid runes in the
 /// UTF-8 encoding.
-pub inline fn validateRuneSlice(slice: []const u8) bool {
+pub inline fn validateRuneSliceEasy(slice: []const u8) bool {
     var st: u32 = 0;
-    var i: usize = 0;
-    while (i < slice.len) : (i += 1) {
-        const b = slice[i];
+    for (slice) |b| {
         if (st == RUNE_ACCEPT and b < 0x80) continue;
         st = st_dfa[st + u8dfa[b]];
+        if (st == RUNE_REJECT) return false;
+    }
+    return true;
+}
+
+pub fn validateRuneSlice(slice: []const u8) bool {
+    var st: u32 = 0;
+    var i: usize = 0;
+    var class: u8 = 0;
+    while (i < slice.len) : (i += 1) {
+        assert(st == RUNE_ACCEPT);
+        const b = slice[i];
+        if (b < 0x80) continue;
+        class = u8dfa[b];
+        st = st_dfa[class];
+        if (st == RUNE_REJECT) return false;
+        switch (class) {
+            0, 1 => unreachable,
+            2 => if (i + 2 > slice.len) {
+                return false;
+            },
+            10, 3, 4 => if (i + 3 > slice.len) {
+                return false;
+            },
+            11, 6, 5 => if (i + 4 > slice.len) {
+                return false;
+            },
+            else => unreachable,
+        }
+        i += 1;
+        st = st_dfa[st + u8dfa[slice[i]]];
+        if (st == RUNE_ACCEPT) continue;
+        if (st == RUNE_REJECT) return false;
+        i += 1;
+        st = st_dfa[st + u8dfa[slice[i]]];
+        if (st == RUNE_ACCEPT) continue;
+        if (st == RUNE_REJECT) return false;
+        i += 1;
+        st = st_dfa[st + u8dfa[slice[i]]];
         if (st == RUNE_REJECT) return false;
     }
     return true;

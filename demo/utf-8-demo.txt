@@ -30,7 +30,7 @@ Linguistics and dictionaries:
 APL:
 
   ((V⍳V)=⍳⍴V)/V←,V    ⌷←⍳→⍴∆∇⊃‾⍎⍕⌈
-
+ÿ
 Nicer typography in plain text files:
 
   ╔══════════════════════════════════════════╗
