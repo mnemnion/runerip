@@ -253,8 +253,10 @@ pub fn utf8ToUtf16Le(utf_16: []u16, utf_8: []const u8) !usize {
             } else {
                 const high = @as(u16, @intCast((rune - 0x10000) >> 10)) + 0xD800;
                 const low = @as(u16, @intCast(rune & 0x3FF)) + 0xDC00;
-                utf_16[i_16..][0..2].* = .{ std.mem.nativeToLittle(u16, high), std.mem.nativeToLittle(u16, low) };
-                i_16 += 2;
+                utf_16[i_16] = std.mem.nativeToLittle(u16, high);
+                i_16 += 1;
+                utf_16[i_16] = std.mem.nativeToLittle(u16, low);
+                i_16 += 1;
             }
         }
     }
