@@ -48,24 +48,68 @@ const u8dfa: [256]u8 = .{
 0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
 };
 
+// TODO: It would be more compact to have a WTF-8 state transition
+// table, instead of a WTF-8 byte DFA.  This version may generate
+// better code, however, because of the 16 value run of 0x03.  I will
+// predict no noticable difference, but let's have a benchmark before
+// trying a version with the state table.
+const w8dfa: [256]u8 = .{
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 00..1f
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 20..3f
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 40..5f
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 60..7f
+1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9, // 80..9f
+7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7, // a0..bf
+8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // c0..df
+0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
+0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
+};
+
+/// Byte transitions for utf8Text
+const t8dfa: [256]u8 = .{
+8,8,  8,8,8,8,8,8,0,0,8,8,0,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,0,0,0, // 00..1f
+0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 20..3f
+0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 40..5f
+0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8, // 60..7f
+1,1,  1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9, // 80..9f
+7,7,  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7, // a0..bf
+8,8,0xc,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // c0..df
+0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
+0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
+};
+
 /// State transition: state + class = new state
 const st_dfa: [108]u8 = .{
- 0,12,24,36,60,96,84,12,12,12,48,72,
-12,12,12,12,12,12,12,12,12,12,12,12,
-12, 0,12,12,12,12,12, 0,12, 0,12,12,
-12,24,12,12,12,12,12,24,12,24,12,12,
-12,12,12,12,12,12,12,24,12,12,12,12,
-12,24,12,12,12,12,12,12,12,24,12,12,
-12,12,12,12,12,12,12,36,12,36,12,12,
-12,36,12,12,12,12,12,36,12,36,12,12,
-12,36,12,12,12,12,12,12,12,12,12,12,
+ 0,12,24,36,60,96,84,12,12,12,48,72,  // 0  (RUNE_ACCEPT)
+12,12,12,12,12,12,12,12,12,12,12,12,  // 12 (RUNE_REJECT)
+12, 0,12,12,12,12,12, 0,12, 0,12,12,  // 24
+12,24,12,12,12,12,12,24,12,24,12,12,  // 32
+12,12,12,12,12,12,12,24,12,12,12,12,  // 48
+12,24,12,12,12,12,12,12,12,24,12,12,  // 60
+12,12,12,12,12,12,12,36,12,36,12,12,  // 72
+12,36,12,12,12,12,12,36,12,36,12,12,  // 84
+12,36,12,12,12,12,12,12,12,12,12,12,  // 96
+};
+
+/// State transition for utf8Text: state + class = new state
+const tx_dfa: [117]u8 = .{
+ 0,12,24,36,60,96,84,12,12,12,48,72,108, // 0  (RUNE_ACCEPT)
+12,12,12,12,12,12,12,12,12,12,12,12, 12, // 12 (RUNE_REJECT)
+12, 0,12,12,12,12,12, 0,12, 0,12,12, 12, // 24
+12,24,12,12,12,12,12,24,12,24,12,12, 12, // 32
+12,12,12,12,12,12,12,24,12,12,12,12, 12, // 48
+12,24,12,12,12,12,12,12,12,24,12,12, 12, // 60
+12,12,12,12,12,12,12,36,12,36,12,12, 12, // 72
+12,36,12,12,12,12,12,36,12,36,12,12, 12, // 84
+12,36,12,12,12,12,12,12,12,12,12,12, 12, // 96
+12,12,12,12,12,12,12,12,12, 0,12,12, 12, // 108
 };
 
 // zig fmt: on
 
 // Probably need mask offset for variants e.g. C0 and C1 rejecting DFA
 
-/// State masks (experiment, shifts may be faster)
+/// State masks
 const c_mask: [12]u8 = .{
     0xff,
     0,
@@ -79,6 +123,22 @@ const c_mask: [12]u8 = .{
     0,
     0,
     0,
+};
+
+const txt_mask: [13]u8 = .{
+    0xff,
+    0,
+    0b0011_1111,
+    0b0001_1111,
+    0b0000_1111,
+    0b0000_0111,
+    0b0000_0011,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0b0011_1111,
 };
 
 /// Successful codepoint parse
@@ -128,19 +188,22 @@ inline fn decodeOne(
 
 /// Decode the rune at [0].  This is only efficient if you need
 /// one rune: use RuneView to iterate the runes of a string.
-/// Assumes that the slice is valid UTF-8, and not truncated.
-pub fn decodeRuneAssumeValid(slice: []const u8) u21 {
+/// Asserts that the slice is valid UTF-8, and assumes it doesn't
+/// contain a truncated codepoint.
+pub fn decodeRuneUnchecked(slice: []const u8) u21 {
     var byte: u16 = slice[0];
     if (byte < 0x80) return byte;
     // Multibyte
     var class: u4 = @intCast(u8dfa[byte]);
     var st: u32 = st_dfa[class];
     var rune: u32 = byte & c_mask[class];
+    assert(st != RUNE_REJECT);
     // Byte 2
     byte = slice[1];
     class = @intCast(u8dfa[byte]);
     st = st_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
+    assert(st != RUNE_REJECT);
     if (st == RUNE_ACCEPT) {
         return @intCast(rune);
     }
@@ -149,6 +212,7 @@ pub fn decodeRuneAssumeValid(slice: []const u8) u21 {
     class = @intCast(u8dfa[byte]);
     st = st_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
+    assert(st != RUNE_REJECT);
     if (st == RUNE_ACCEPT) {
         return @intCast(rune);
     }
@@ -165,8 +229,87 @@ pub fn decodeRuneAssumeValid(slice: []const u8) u21 {
     return @intCast(rune);
 }
 
+/// Decode a rune at ``slice[0]`.  Assumes that `slice.len > 0`.
+pub fn decodeRune(slice: []const u8) !u21 {
+    var cursor: usize = 0;
+    return decodeRuneCursor(slice, &cursor);
+}
+
+/// Decode a rune at `slice[cursor.*]`.  The cursor will be advanced to
+/// one index past the decoded rune, which may include `slice.len`.  If
+/// an error is thrown the cursor will point to the first invalid byte
+/// in the sequence.  Assumes `slice` is indexable at `cursor.*`.
+pub fn decodeRuneCursor(slice: []const u8, cursor: *usize) !u21 {
+    return decodeAnyRuneCursor(u8dfa, st_dfa, c_mask, slice, cursor);
+}
+
+fn decodeAnyRuneCursor(
+    cu_dfa: anytype,
+    state_dfa: anytype,
+    class_mask: anytype,
+    slice: []const u8,
+    i: *usize,
+) !u21 {
+    var byte: u16 = slice[i.*];
+    i.* += 1;
+    if (byte < 0x80) return byte;
+    // Multibyte
+    var class: u4 = @intCast(cu_dfa[byte]);
+    var st: u32 = state_dfa[class];
+    var rune: u32 = byte & class_mask[class];
+    if (st == RUNE_REJECT) return error.InvalidUtf8;
+    switch (class) {
+        2, 12 => if (i.* + 1 > slice.len) {
+            return error.InvalidUtf8;
+        },
+        10, 3, 4 => if (i.* + 2 > slice.len) {
+            return error.InvalidUtf8;
+        },
+        11, 6, 5 => if (i.* + 3 > slice.len) {
+            return error.InvalidUtf8;
+        }, // Remaining states are ACCEPT or produce REJECT here
+        else => unreachable,
+    }
+    // Byte 2
+    byte = slice[i.*];
+    i.* += 1;
+    class = @intCast(u8dfa[byte]);
+    st = st_dfa[st + class];
+    rune = (byte & 0x3f) | (rune << 6);
+    assert(st != RUNE_REJECT);
+    if (st == RUNE_ACCEPT) {
+        return @intCast(rune);
+    }
+    // Byte 3
+    byte = slice[i.*];
+    i.* += 1;
+    class = @intCast(u8dfa[byte]);
+    st = st_dfa[st + class];
+    rune = (byte & 0x3f) | (rune << 6);
+    assert(st != RUNE_REJECT);
+    if (st == RUNE_ACCEPT) {
+        return @intCast(rune);
+    }
+    // Byte 4
+    byte = slice[i.*];
+    i.* += 1;
+    if (builtin.mode == .Debug) {
+        class = @intCast(u8dfa[byte]);
+        st = st_dfa[st + class];
+        std.debug.assert(st == RUNE_ACCEPT);
+    }
+    rune = (byte & 0x3f) | (rune << 6);
+    // Equivalent of a catch unreachable
+    assert(st != RUNE_REJECT);
+    return @intCast(rune);
+}
+
 pub fn countRunes(slice: []const u8) !usize {
     return countAnyRunes(u8dfa, st_dfa, slice);
+}
+
+pub fn countRunesWtf8(slice: []const u8) !usize {
+    return countAnyRunes(w8dfa, st_dfa, slice);
 }
 
 fn countAnyRunes(cu_dfa: anytype, state_dfa: anytype, slice: []const u8) !usize {
@@ -183,8 +326,7 @@ fn countAnyRunes(cu_dfa: anytype, state_dfa: anytype, slice: []const u8) !usize 
         st = state_dfa[class];
         if (st == RUNE_REJECT) return error.InvalidUtf8;
         switch (class) {
-            0, 1 => unreachable,
-            2 => if (i + 2 > slice.len) {
+            2, 12 => if (i + 2 > slice.len) {
                 return error.InvalidUtf8;
             },
             10, 3, 4 => if (i + 3 > slice.len) {
@@ -192,7 +334,7 @@ fn countAnyRunes(cu_dfa: anytype, state_dfa: anytype, slice: []const u8) !usize 
             },
             11, 6, 5 => if (i + 4 > slice.len) {
                 return error.InvalidUtf8;
-            },
+            }, // Remaining states are ACCEPT or produce REJECT here
             else => unreachable,
         }
         i += 1;
@@ -227,59 +369,70 @@ pub inline fn validateRuneSliceEasy(slice: []const u8) bool {
 /// Validate that a slice is composed only of valid runes in the
 /// UTF-8 encoding.
 pub fn validateRuneSlice(slice: []const u8) bool {
-    return validateSliceWithDfa(u8dfa, st_dfa, slice);
+    var i: usize = 0;
+    return validateAnyRuneWithCursor(u8dfa, st_dfa, slice, &i);
 }
 
-fn validateSliceWithDfa(cu_dfa: anytype, state_dfa: anytype, slice: []const u8) bool {
-    var st: u32 = 0;
+/// Validate that a slice is composed only of valid runes in the
+/// WTF-8 encoding.
+pub fn validateRuneSliceWtf8(slice: []const u8) bool {
     var i: usize = 0;
+    return validateAnyRuneWithCursor(w8dfa, st_dfa, slice, &i);
+}
+
+/// UTF-8 encoding.  Must be passed a cursor, by pointer: this
+/// will point to slice.len when the return value is `true`, and
+/// to the first rejected byte when `false`.
+pub fn validateRuneCursor(slice: []const u8, i: *usize) bool {
+    return validateAnyRuneWithCursor(u8dfa, st_dfa, slice, i);
+}
+
+/// Validate that a slice is composed only of valid runes in the
+/// WTF-8 encoding.  Must be passed a cursor, by pointer: this
+/// will point to slice.len when the return value is `true`, and
+/// to the first rejected byte when `false`.
+pub fn validateRuneWtf8Cursor(slice: []const u8, i: *usize) bool {
+    return validateAnyRuneWithCursor(w8dfa, st_dfa, slice, i);
+}
+
+fn validateAnyRuneWithCursor(
+    cu_dfa: anytype,
+    state_dfa: anytype,
+    slice: []const u8,
+    i: *usize,
+) bool {
+    var st: u32 = 0;
     var class: u8 = 0;
-    while (i < slice.len) : (i += 1) {
+    while (i.* < slice.len) : (i.* += 1) {
         assert(st == RUNE_ACCEPT);
-        const b = slice[i];
+        const b = slice[i.*];
         if (b < 0x80) continue;
         class = cu_dfa[b];
         st = state_dfa[class];
         if (st == RUNE_REJECT) return false;
         switch (class) {
             0, 1 => unreachable,
-            2 => if (i + 2 > slice.len) {
+            2 => if (i.* + 2 > slice.len) {
                 return false;
             },
-            10, 3, 4 => if (i + 3 > slice.len) {
+            10, 3, 4 => if (i.* + 3 > slice.len) {
                 return false;
             },
-            11, 6, 5 => if (i + 4 > slice.len) {
+            11, 6, 5 => if (i.* + 4 > slice.len) {
                 return false;
             },
             else => unreachable,
         }
-        i += 1;
-        st = state_dfa[st + cu_dfa[slice[i]]];
+        i.* += 1;
+        st = state_dfa[st + cu_dfa[slice[i.*]]];
         if (st == RUNE_ACCEPT) continue;
         if (st == RUNE_REJECT) return false;
-        i += 1;
-        st = state_dfa[st + cu_dfa[slice[i]]];
+        i.* += 1;
+        st = state_dfa[st + cu_dfa[slice[i.*]]];
         if (st == RUNE_ACCEPT) continue;
         if (st == RUNE_REJECT) return false;
-        i += 1;
-        st = state_dfa[st + cu_dfa[slice[i]]];
-        if (st == RUNE_REJECT) return false;
-    }
-    return true;
-}
-
-/// Validate that a slice is composed only of valid runes in the
-/// UTF-8 encoding.  Must be passed a cursor, by pointer: this
-/// will point to slice.len when the return value is `true`, and
-/// to the first rejected byte when `false`.
-pub fn validateUtf8WithCursor(slice: []const u8, i: *usize) bool {
-    // TODO: rewrite this as an unroll
-    var st: u32 = 0;
-    while (i.* < slice.len) : (i.* += 1) {
-        const b = slice[i.*];
-        if (st == RUNE_ACCEPT and b < 0x80) continue;
-        st = st_dfa[st + u8dfa[b]];
+        i.* += 1;
+        st = state_dfa[st + cu_dfa[slice[i.*]]];
         if (st == RUNE_REJECT) return false;
     }
     return true;
@@ -291,7 +444,48 @@ pub fn validateUtf8WithCursor(slice: []const u8, i: *usize) bool {
 /// length of a slice of utf_16 containing the transcoded points.
 /// Assumes that the destination has sufficient room for the transcoding.
 pub fn utf8ToUtf16Le(utf_16: []u16, utf_8: []const u8) !usize {
-    return xtf8ToXtf16Le(u8dfa, st_dfa, c_mask, utf_16, utf_8);
+    var i_8: usize = 0;
+    var i_16: usize = 0;
+    return xtf8ToXtf16Le(u8dfa, st_dfa, c_mask, utf_16, utf_8, &i_16, &i_8);
+}
+
+/// Transcode utf_8 source into utf_16 destination Assumes that the
+/// destination has sufficient room for the transcoding.
+/// Takes two cursors: if an error is thrown, the i_16 cursor points to
+/// the index past the last transcoded point, and the i_8 cursor points to
+/// the source of the error.  Success means that i_16 points to the point
+/// in utf_16 which may be sliced to obtain the result.
+pub fn utf8ToUtf16LeCursor(
+    utf_16: []u16,
+    utf_8: []const u8,
+    i_16: *usize,
+    i_8: *usize,
+) !void {
+    _ = xtf8ToXtf16Le(u8dfa, st_dfa, c_mask, utf_16, utf_8, i_16, i_8);
+}
+
+/// Transcode wtf_8 source into wtf_16 destination, returning the
+/// length of a slice of wtf_16 containing the transcoded points.
+/// Assumes that the destination has sufficient room for the transcoding.
+pub fn wtf8ToWtf16Le(wtf_16: []u16, wtf_8: []const u8) !usize {
+    var i_8: usize = 0;
+    var i_16: usize = 0;
+    return xtf8ToXtf16Le(w8dfa, st_dfa, c_mask, wtf_16, wtf_8, &i_16, &i_8);
+}
+
+/// Transcode wtf_8 source into wtf_16 destination.  Assumes that the
+/// destination has sufficient room for the transcoding.
+/// Takes two cursors: if an error is thrown, the i_16 cursor points to
+/// the index past the last transcoded point, and the i_8 cursor points to
+/// the source of the error.  Success means that i_16 points to the point
+/// in wtf_16 which may be sliced to obtain the result.
+pub fn wtf8ToWtf16LeCursor(
+    wtf_16: []u16,
+    wtf_8: []const u8,
+    i_16: *usize,
+    i_8: *usize,
+) !void {
+    _ = try xtf8ToXtf16Le(w8dfa, st_dfa, c_mask, wtf_16, wtf_8, i_16, i_8);
 }
 
 fn xtf8ToXtf16Le(
@@ -300,17 +494,17 @@ fn xtf8ToXtf16Le(
     class_mask: anytype,
     utf_16: []u16,
     utf_8: []const u8,
+    i_16: *usize,
+    i_8: *usize,
 ) !usize {
-    var i_8: usize = 0;
-    var i_16: usize = 0;
     var st: u32 = 0;
     var rune: u32 = 0;
-    while (i_8 < utf_8.len) : (i_8 += 1) {
-        const b = utf_8[i_8];
+    while (i_8.* < utf_8.len) : (i_8.* += 1) {
+        const b = utf_8[i_8.*];
         if (st == RUNE_ACCEPT) {
             if (b < 0x80) {
-                utf_16[i_16] = std.mem.nativeToLittle(u16, @intCast(rune));
-                i_16 += 1;
+                utf_16[i_16.*] = std.mem.nativeToLittle(u16, @intCast(rune));
+                i_16.* += 1;
             } else {
                 const class = cu_dfa[b];
                 st = state_dfa[class];
@@ -325,19 +519,19 @@ fn xtf8ToXtf16Le(
             return error.InvalidUtf8;
         } else if (st == RUNE_ACCEPT) {
             if (rune < 0x10000) {
-                utf_16[i_16] = std.mem.nativeToLittle(u16, @intCast(rune));
-                i_16 += 1;
+                utf_16[i_16.*] = std.mem.nativeToLittle(u16, @intCast(rune));
+                i_16.* += 1;
             } else {
                 const high = @as(u16, @intCast((rune - 0x10000) >> 10)) + 0xD800;
                 const low = @as(u16, @intCast(rune & 0x3FF)) + 0xDC00;
-                utf_16[i_16] = std.mem.nativeToLittle(u16, high);
-                i_16 += 1;
-                utf_16[i_16] = std.mem.nativeToLittle(u16, low);
-                i_16 += 1;
+                utf_16[i_16.*] = std.mem.nativeToLittle(u16, high);
+                i_16.* += 1;
+                utf_16[i_16.*] = std.mem.nativeToLittle(u16, low);
+                i_16.* += 1;
             }
         }
     }
-    return i_16;
+    return i_16.*;
 }
 
 /// RuneView iterates the runes of a UTF-8 encoded string.
@@ -465,6 +659,28 @@ test decodeNext {
         try expectEqual(ret, st);
         try expectEqual(b, rune);
     }
+}
+
+fn testCursorDecode(slice: []const u8) !void {
+    const points = try countRunes(slice);
+    const view = try RuneView.init(slice);
+    var iterator = view.iterator();
+    var i: usize = 0;
+    var count: usize = 0;
+    while (i < slice.len) {
+        const rune = try decodeRuneCursor(slice, &i);
+        const iter_rune = iterator.nextRune().?;
+        try expectEqual(iter_rune, rune);
+        count += 1;
+    }
+    try expectEqual(points, count);
+}
+
+test decodeRuneCursor {
+    try testCursorDecode(abcde);
+    try testCursorDecode(greek);
+    try testCursorDecode(maths);
+    try testCursorDecode(emotes);
 }
 
 test countRunes {
