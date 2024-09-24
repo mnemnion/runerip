@@ -107,7 +107,10 @@ const tx_dfa: [117]u8 = .{
 
 // zig fmt: on
 
-// Probably need mask offset for variants e.g. C0 and C1 rejecting DFA
+// The states in Björn's version (which I'm using) allow for shifting,
+// instead of a lookup table to obtain masks.  But the lookup is just
+// as efficient, as it turns out, and it's necessary to accomodate the
+// Utf8Text case.
 
 /// State masks
 const c_mask: [12]u8 = .{
@@ -238,7 +241,7 @@ pub fn decodeRune(slice: []const u8) !u21 {
 /// Decode a rune at `slice[cursor.*]`.  The cursor will be advanced to
 /// one index past the decoded rune, which may include `slice.len`.  If
 /// an error is thrown the cursor will point to the first invalid byte
-/// in the sequence.  Assumes `slice` is indexable at `cursor.*`.
+/// in the sequence.  Asserts that `slice` is indexable at `cursor.*`.
 pub fn decodeRuneCursor(slice: []const u8, cursor: *usize) !u21 {
     return decodeAnyRuneCursor(u8dfa, st_dfa, c_mask, slice, cursor);
 }
@@ -250,14 +253,18 @@ fn decodeAnyRuneCursor(
     slice: []const u8,
     i: *usize,
 ) !u21 {
+    assert(i.* < slice.len);
     var byte: u16 = slice[i.*];
-    i.* += 1;
-    if (byte < 0x80) return byte;
+    if (byte < 0x80) {
+        i.* += 1;
+        return byte;
+    }
     // Multibyte
     var class: u4 = @intCast(cu_dfa[byte]);
     var st: u32 = state_dfa[class];
     var rune: u32 = byte & class_mask[class];
     if (st == RUNE_REJECT) return error.InvalidUtf8;
+    i.* += 1;
     switch (class) {
         2, 12 => if (i.* + 1 > slice.len) {
             return error.InvalidUtf8;
@@ -272,35 +279,27 @@ fn decodeAnyRuneCursor(
     }
     // Byte 2
     byte = slice[i.*];
-    i.* += 1;
     class = @intCast(u8dfa[byte]);
     st = st_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
-    assert(st != RUNE_REJECT);
-    if (st == RUNE_ACCEPT) {
-        return @intCast(rune);
-    }
+    if (st == RUNE_REJECT) return error.InvalidUtf8;
+    i.* += 1;
+    if (st == RUNE_ACCEPT) return @intCast(rune);
     // Byte 3
     byte = slice[i.*];
-    i.* += 1;
     class = @intCast(u8dfa[byte]);
     st = st_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
-    assert(st != RUNE_REJECT);
-    if (st == RUNE_ACCEPT) {
-        return @intCast(rune);
-    }
+    if (st == RUNE_REJECT) return error.InvalidUtf8;
+    i.* += 1;
+    if (st == RUNE_ACCEPT) return @intCast(rune);
     // Byte 4
     byte = slice[i.*];
-    i.* += 1;
-    if (builtin.mode == .Debug) {
-        class = @intCast(u8dfa[byte]);
-        st = st_dfa[st + class];
-        std.debug.assert(st == RUNE_ACCEPT);
-    }
+    class = @intCast(u8dfa[byte]);
+    st = st_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
-    // Equivalent of a catch unreachable
-    assert(st != RUNE_REJECT);
+    if (st != RUNE_ACCEPT) return error.InvalitUtf8;
+    i.* += 1;
     return @intCast(rune);
 }
 
@@ -503,7 +502,7 @@ fn xtf8ToXtf16Le(
         const b = utf_8[i_8.*];
         if (st == RUNE_ACCEPT) {
             if (b < 0x80) {
-                utf_16[i_16.*] = std.mem.nativeToLittle(u16, @intCast(rune));
+                utf_16[i_16.*] = std.mem.nativeToLittle(u16, b);
                 i_16.* += 1;
             } else {
                 const class = cu_dfa[b];
@@ -748,4 +747,15 @@ test RuneView {
     try testIterators(greek);
     try testIterators(maths);
     try testIterators(emotes);
+}
+
+const demo_txt = @embedFile("utf-8-demo.txt");
+
+test "transcoding" {
+    const allocator = testing.allocator;
+    const utf16_std = try std.unicode.utf8ToUtf16LeAlloc(allocator, demo_txt);
+    defer allocator.free(utf16_std);
+    var rune16_buf: [demo_txt.len + 1024]u16 = undefined;
+    const utf16_len = try utf8ToUtf16Le(&rune16_buf, demo_txt);
+    try expectEqualSlices(u16, utf16_std, rune16_buf[0..utf16_len]);
 }
