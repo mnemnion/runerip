@@ -1,10 +1,12 @@
 // Zig package metadata for {project_name}
 .{
-    .name = "runerip",
+    .name = .runerip,
 
-    .version = "0.0.1",
+    .version = "0.0.2",
 
-    // .minimum_zig_version = "0.11.0",
+    .fingerprint = 0x24c151ff69094093,
+
+    .minimum_zig_version = "0.14.0",
 
     .dependencies = .{},
 
