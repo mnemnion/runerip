@@ -62,6 +62,16 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(runerip_sum_exe);
 
+    const runerip_valid_count_exe = b.addExecutable(.{
+        .name = "runerip_valid_count",
+        .root_source_file = b.path("demo/runerip_valid_count.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    runerip_valid_count_exe.root_module.addImport("runerip", runerip_module);
+    b.installArtifact(runerip_valid_count_exe);
+
     const standard_sum_exe = b.addExecutable(.{
         .name = "standard_sum",
         .root_source_file = b.path("demo/standard_sum.zig"),

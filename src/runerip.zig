@@ -32,7 +32,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
-const native_endian = builtin.cpu.arch.endian();
 // zig fmt: off
 
 /// Byte transitions: value to class
@@ -150,6 +149,7 @@ pub const RUNE_ACCEPT = 0;
 /// Error state
 pub const RUNE_REJECT = 12;
 
+// NOTE: tested but not used, also incompatible with textutf8
 pub inline fn decodeNext(state: *u32, rune: *u32, byte: u16) u32 {
     const class: u4 = @intCast(u8dfa[byte]);
     rune.* = if (state.* != RUNE_ACCEPT)
@@ -224,7 +224,7 @@ pub fn decodeRuneUnchecked(slice: []const u8) u21 {
     if (builtin.mode == .Debug) {
         class = @intCast(u8dfa[byte]);
         st = st_dfa[st + class];
-        std.debug.assert(st == RUNE_ACCEPT);
+        assert(st == RUNE_ACCEPT);
     }
     rune = (byte & 0x3f) | (rune << 6);
     // Equivalent of a catch unreachable
@@ -280,7 +280,7 @@ fn decodeAnyRuneCursor(
     // Byte 2
     byte = slice[i.*];
     class = @intCast(u8dfa[byte]);
-    st = st_dfa[st + class];
+    st = state_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
     if (st == RUNE_REJECT) return error.InvalidUtf8;
     i.* += 1;
@@ -288,7 +288,7 @@ fn decodeAnyRuneCursor(
     // Byte 3
     byte = slice[i.*];
     class = @intCast(u8dfa[byte]);
-    st = st_dfa[st + class];
+    st = state_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
     if (st == RUNE_REJECT) return error.InvalidUtf8;
     i.* += 1;
@@ -296,7 +296,7 @@ fn decodeAnyRuneCursor(
     // Byte 4
     byte = slice[i.*];
     class = @intCast(u8dfa[byte]);
-    st = st_dfa[st + class];
+    st = state_dfa[st + class];
     rune = (byte & 0x3f) | (rune << 6);
     if (st != RUNE_ACCEPT) return error.InvalitUtf8;
     i.* += 1;
@@ -349,6 +349,20 @@ fn countAnyRunes(cu_dfa: anytype, state_dfa: anytype, slice: []const u8) !usize 
         if (st == RUNE_REJECT) return error.InvalidUtf8;
     }
     return count;
+}
+
+const weight: [4]u8 = .{ 1, 1, 0, 1 };
+
+/// Count the number of runes in an assumed-valid slice.  This gives correct
+/// answers for either of WTF-8 or UTF-8, provided that the string is valid by
+/// either standard.  Invalid data will give a spurious answer, but is otherwise
+/// safe to provide.
+pub fn countValidRunes(slice: []const u8) usize {
+    var c: usize = 0;
+    for (slice) |b| {
+        c += weight[b >> 6];
+    }
+    return c;
 }
 
 /// Validate that a slice is composed only of valid runes in the
@@ -600,8 +614,6 @@ pub const RuneIterator = struct {
         }
         rune = (byte & 0x3f) | (rune << 6);
         r.i += 1;
-        // Equivalent of a catch unreachable
-        std.debug.assert(st != RUNE_REJECT);
         return @intCast(rune);
     }
 

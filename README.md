@@ -14,7 +14,7 @@ It's also handy that the term is a bit semantically vague about the precise enco
 
 ## Benchmarks
 
-The demo/ folder has four benchmark executables for both `runerip` and `std.unicode`, for counting, validation, decoding, and transcoding.  The `-sum` programs decode, and sum the codepoint values together, to encourage the optimizer not to eliminate the work.  Each runs 10_000 cycles to prevent startup from dominating the metric: tweaking this number shows that the compiler is not taking the opportunity to run a cycle once and multiply by 10_000, which it technically could.
+The demo/ folder has four (and a half) benchmark executables for both `runerip` and `std.unicode`, for counting, validation, decoding, and transcoding.  The `-sum` programs decode, and sum the codepoint values together, to encourage the optimizer not to eliminate the work.  Each runs 10_000 cycles to prevent startup from dominating the metric: tweaking this number shows that the compiler is not taking the opportunity to run a cycle once and multiply by 10_000, which it technically could.
 
 All benchmarks are run on an M1 Max chip running macOS Sonoma, I would welcome benchmarks from other systems to get a better comparison.  Each is run with [hyperfine](https://github.com/sharkdp/hyperfine) using `--warmup 5 --shell=none`, and is reported as the mean of three runs, which invariably differ by a less than 1% deviation from the average.  Hyperfine warns when any run takes unusual time due to OS interference, any warned benchmark was discarded.
 
@@ -26,6 +26,13 @@ All times are in milliseconds.
 | Count     | 206.7       | 72.0    | 1.86x  |
 | Decode    | 204.2       | 98.0    | 2.08x  |
 | Transcode | 329.8       | 145.3   | 2.27x  |
+
+Runerip also offers a counting function `countValidRunes`, which presumes that the string is valid UTF-8 (or WTF-8).  This allows for further speedup:
+
+|  Benchmark  | validating | assuming | Factor |
+|-------------|------------|----------|--------|
+| v. stdlib   | 206.7      | 34.0     | 6.07x  |
+| v. runerip  | 72.0       | 34.0     | 2.1x   |
 
 Results for WTF-8 variants are not yet available, my guess is that they will differ very little.  It's noteworthy that the fastest `std` implementation, the validator, also uses a quite similar DFA internally.
 
