@@ -2,11 +2,11 @@
 .{
     .name = .runerip,
 
-    .version = "0.0.2",
+    .version = "0.0.3",
 
     .fingerprint = 0x24c151ff69094093,
 
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
 
     .dependencies = .{},
 
