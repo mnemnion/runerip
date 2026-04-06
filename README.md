@@ -1,5 +1,7 @@
 # Runerip
 
+Retired in favor of [unicoder](https://github.com/mnemnion/unicoder/).
+
 This is a small library which implements a UTF-8 validator and decoder.  The algorithm is [prior art](https://bjoern.hoehrmann.de/utf-8/decoder/dfa/), and being curious about these things, I decided to implement it in Zig and see what happens.
 
 ### Runes
